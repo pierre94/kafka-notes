@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Future;
 
+// 待深入学习，看是否有应用场景
 /**
  * A mock of the producer interface you can use for testing code that uses Kafka.
  * <p>

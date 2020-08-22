@@ -14,6 +14,21 @@ JMX的全称为Java Management Extensions. 顾名思义，是管理Java的一种
         // java.rmi.server.hostname 上面配置后，就能客户端访问到，不然只能本地访问
 ```
 
+### 完整的JMX参数 
+日常开发调试过程中,完整的JMX开启方案:
+```shell script
+        -Dcom.sun.management.jmxremote
+
+        -Djava.rmi.server.hostname=100.0.66.1
+
+        -Dcom.sun.management.jmxremote.port=9999
+
+        -Dcom.sun.management.jmxremote.ssl=false
+
+        -Dcom.sun.management.jmxremote.authenticate=false
+```
+
+
 ## 工具集合
 ### jmxterm
 https://github.com/jiaqi/jmxterm
@@ -24,6 +39,21 @@ java -jar jmxterm-1.0.1-uber.jar -l ip:port
 ```
 
 ## 统一JMX监控
+
+### 监控项目
+> https://docs.appdynamics.com/display/PRO45/Default+JMX+Metrics+for+Apache+Kafka+Backends
+
+Kafka Producer JMX Metrics
+- Response rate: the rate at which the producer receives responses from brokers
+- Request rate: the rate at which producers send request data to brokers
+- Request latency average: average time between the producer's execution of KafkaProducer.send() and when it receives a response from the broker
+- Outgoing byte rate: producer network throughput
+- IO wait time: percentage of time the CPU is idle and there is at least one I/O operation in progress
+- Record error rate: average record sends per second that result in errors
+- Waiting threads: number of user threads blocked waiting for buffer memory to enqueue their records
+- Requests in flight: current number of outstanding requests awaiting a response
+- Network IO rate: average number per second of network operations, reads or writes, on all connections
+
 
 ### 方案一:
 
@@ -44,6 +74,8 @@ https://github.com/sysco-middleware/kafka-client-collector
 - 测试通过
 
 - 思考: 以prometheus push gateway方案 效果会不会更好一点
+
+
 
 ## 参考资料
 http://cloudurable.com/blog/kafka-tutorial-kafka-producer-advanced-java-examples/index.html

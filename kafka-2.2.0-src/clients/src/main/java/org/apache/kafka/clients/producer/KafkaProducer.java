@@ -416,6 +416,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 this.metadata.bootstrap(addresses, time.milliseconds());
             }
             this.errors = this.metrics.sensor("errors");
+            // 启动sender线程
             this.sender = newSender(logContext, kafkaClient, this.metadata);
             String ioThreadName = NETWORK_THREAD_PREFIX + " | " + clientId;
             this.ioThread = new KafkaThread(ioThreadName, this.sender, true);
@@ -848,6 +849,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
+     * 实现异步发送一个record
      * Implementation of asynchronously send a record to a topic.
      */
     private Future<RecordMetadata> doSend(ProducerRecord<K, V> record, Callback callback) {
@@ -900,6 +902,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
             RecordAccumulator.RecordAppendResult result = accumulator.append(tp, timestamp, serializedKey,
                     serializedValue, headers, interceptCallback, remainingWaitMs);
+            // accumulator.append 成功的话，就要唤醒发送线程，异步发送
             if (result.batchIsFull || result.newBatchCreated) {
                 log.trace("Waking up the sender since topic {} partition {} is either full or getting a new batch", record.topic(), partition);
                 this.sender.wakeup();

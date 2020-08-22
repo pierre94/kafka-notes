@@ -91,7 +91,8 @@ public final class RecordMetadata {
 
     /**
      * The checksum (CRC32) of the record.
-     *
+     *  broker可能存在消息格式转换
+     *  v2格式不记录记录级校验
      * @deprecated As of Kafka 0.11.0. Because of the potential for message format conversion on the broker, the
      *             computed checksum may not match what was stored on the broker, or what will be returned to the consumer.
      *             It is therefore unsafe to depend on this checksum for end-to-end delivery guarantees. Additionally,

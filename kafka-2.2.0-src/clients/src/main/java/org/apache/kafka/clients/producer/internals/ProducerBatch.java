@@ -96,7 +96,7 @@ public final class ProducerBatch {
 
     /**
      * Append the record to the current record set and return the relative offset within that record set
-     *
+     * 将记录追加到当前记录集中，并返回该记录集中的相对偏移量
      * @return The RecordSend corresponding to this record or null if there isn't sufficient room.
      */
     public FutureRecordMetadata tryAppend(long timestamp, byte[] key, byte[] value, Header[] headers, Callback callback, long now) {
@@ -121,6 +121,7 @@ public final class ProducerBatch {
     }
 
     /**
+     * 什么场景才需要split大batch呢？
      * This method is only used by {@link #split(int)} when splitting a large batch to smaller ones.
      * @return true if the record has been successfully appended, false otherwise.
      */
@@ -130,6 +131,7 @@ public final class ProducerBatch {
         } else {
             // No need to get the CRC.
             this.recordsBuilder.append(timestamp, key, value, headers);
+            // estimateSizeInBytesUpperBound估算记录的大小(没有考虑实际压缩的效果)，空间换时间
             this.maxRecordSize = Math.max(this.maxRecordSize, AbstractRecords.estimateSizeInBytesUpperBound(magic(),
                     recordsBuilder.compressionType(), key, value, headers));
             FutureRecordMetadata future = new FutureRecordMetadata(this.produceFuture, this.recordCount,
@@ -146,7 +148,7 @@ public final class ProducerBatch {
     }
 
     /**
-     * Abort the batch and complete the future and callbacks.
+     * 中止Abort the batch and complete the future and callbacks.
      *
      * @param exception The exception to use to complete the future and awaiting callbacks.
      */
@@ -159,6 +161,8 @@ public final class ProducerBatch {
     }
 
     /**
+     * isDone 和 done的区别是啥？
+     * 一个是状态，一个是操作
      * Return `true` if {@link #done(long, long, RuntimeException)} has been invoked at least once, `false` otherwise.
      */
     public boolean isDone() {
@@ -168,7 +172,7 @@ public final class ProducerBatch {
     /**
      * Finalize the state of a batch. Final state, once set, is immutable. This function may be called
      * once or twice on a batch. It may be called twice if
-     * 1. An inflight batch expires before a response from the broker is received. The batch's final
+     * 1. An inflight batch expires到期\失效 before a response from the broker is received. The batch's final
      * state is set to FAILED. But it could succeed on the broker and second time around batch.done() may
      * try to set SUCCEEDED final state.
      * 2. If a transaction abortion happens or if the producer is closed forcefully, the final state is
@@ -295,6 +299,7 @@ public final class ProducerBatch {
                 recordsBuilder.compressionType(), record.key(), record.value(), record.headers()), batchSize);
         ByteBuffer buffer = ByteBuffer.allocate(initialSize);
 
+        //注意，我们故意不设置producer状态（producerId、epoch、sequence和isTransaction）？？？
         // Note that we intentionally do not set producer state (producerId, epoch, sequence, and isTransactional)
         // for the newly created batch. This will be set when the batch is dequeued for sending (which is consistent
         // with how normal batches are handled).

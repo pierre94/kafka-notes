@@ -68,6 +68,7 @@ import java.util.Map;
 import static org.apache.kafka.common.record.RecordBatch.NO_TIMESTAMP;
 
 /**
+ * 处理向Kafka集群发送product请求的后台线程。这个线程发出元数据请求来更新它的集群视图，然后将product请求发送到适当的节点。
  * The background thread that handles the sending of produce requests to the Kafka cluster. This thread makes metadata
  * requests to renew its view of the cluster and then sends produce requests to the appropriate nodes.
  */
@@ -171,6 +172,7 @@ public class Sender implements Runnable {
 
     /**
      *  Get the in-flight batches that has reached delivery timeout.
+     *  获取传输超时的in-flight batches
      */
     private List<ProducerBatch> getExpiredInflightBatches(long now) {
         List<ProducerBatch> expiredBatches = new ArrayList<>();
@@ -224,12 +226,14 @@ public class Sender implements Runnable {
     }
 
     /**
+     * 轮询
      * The main run loop for the sender thread
      */
     public void run() {
         log.debug("Starting Kafka producer I/O thread.");
 
         // main loop, runs until close is called
+        // run方法清晰简单
         while (running) {
             try {
                 run(time.milliseconds());
@@ -267,10 +271,12 @@ public class Sender implements Runnable {
 
     /**
      * Run a single iteration of sending
+     * 运行一个单个的迭代
      *
      * @param now The current POSIX time in milliseconds
      */
     void run(long now) {
+        // TODO: 2020/8/22 暂不阅读事务部分的实现
         if (transactionManager != null) {
             try {
                 if (transactionManager.shouldResetProducerStateAfterResolvingSequences())
@@ -307,16 +313,19 @@ public class Sender implements Runnable {
             }
         }
 
+        // 如果有数据的话，pollTimeout=0
         long pollTimeout = sendProducerData(now);
         client.poll(pollTimeout, now);
     }
 
     private long sendProducerData(long now) {
         Cluster cluster = metadata.fetch();
-        // get the list of partitions with data ready to send
+        // get the list of partitions with data ready to send 获取准备发送数据的分区列表
         RecordAccumulator.ReadyCheckResult result = this.accumulator.ready(cluster, now);
 
         // if there are any partitions whose leaders are not known yet, force metadata update
+        // 如果有任何分区的leader还不知道，强制元数据更新
+        // 引申思考: 假如分区的leader就是挂了呢？强刷元数据也没有用吧？
         if (!result.unknownLeaderTopics.isEmpty()) {
             // The set of topics with unknown leader contains topics with leader election pending as well as
             // topics which may have expired. Add the topic again to metadata to ensure it is included
@@ -329,11 +338,14 @@ public class Sender implements Runnable {
             this.metadata.requestUpdate();
         }
 
-        // remove any nodes we aren't ready to send to
+        // remove any nodes we aren't ready to send to 删除任何我们不准备发送到的节点 作用是?
+        // 作用是： 这里是新的变量iter，可能集群出现问题，node节点挂了，就需要剔除掉
+        // iter是准备发送数据的node列表
         Iterator<Node> iter = result.readyNodes.iterator();
         long notReadyTimeout = Long.MAX_VALUE;
         while (iter.hasNext()) {
             Node node = iter.next();
+            // 如果client连不上这个node，说明这个node是挂了，就需要移除
             if (!this.client.ready(node, now)) {
                 iter.remove();
                 notReadyTimeout = Math.min(notReadyTimeout, this.client.pollDelayMs(node, now));
@@ -341,17 +353,23 @@ public class Sender implements Runnable {
         }
 
         // create produce requests
+        // RecordAccumulator中将缓存的ProducerBatch排空，并整理成按节点对应的列表 `Map<Integer, List<ProducerBatch>>`
         Map<Integer, List<ProducerBatch>> batches = this.accumulator.drain(cluster, result.readyNodes, this.maxRequestSize, now);
+        // 最终将batch放到inflightBatchList里面
         addToInflightBatches(batches);
+        // 如果需要保证消息的强顺序性，则缓存对应 topic 分区对象，防止同一时间往同一个 topic 分区发送多条处于未完成状态的消息
+        // maxInflightRequests == 1 guaranteeMessageOrder为true
         if (guaranteeMessageOrder) {
             // Mute all the partitions drained
             for (List<ProducerBatch> batchList : batches.values()) {
                 for (ProducerBatch batch : batchList)
+                    // 实际上就是将本批次消息所在的分区信息添加到一个集合中，以保障每个topic下的该分区只有一个批次发送
                     this.accumulator.mutePartition(batch.topicPartition);
             }
         }
 
         accumulator.resetNextBatchExpiryTime();
+        // 事务相关，需要处理expiredInflightBatches和expiredBatches的消息数
         List<ProducerBatch> expiredInflightBatches = getExpiredInflightBatches(now);
         List<ProducerBatch> expiredBatches = this.accumulator.expiredBatches(now);
         expiredBatches.addAll(expiredInflightBatches);
@@ -370,6 +388,7 @@ public class Sender implements Runnable {
                 transactionManager.markSequenceUnresolved(expiredBatch.topicPartition);
             }
         }
+        // 更新metric，指标里面的queue time、压缩率等均在这里生成更新
         sensors.updateProduceRequestMetrics(batches);
 
         // If we have any nodes that are ready to send + have sendable data, poll with 0 timeout so this can immediately
@@ -384,6 +403,7 @@ public class Sender implements Runnable {
             log.trace("Nodes with data ready to send: {}", result.readyNodes);
             // if some partitions are already ready to be sent, the select time would be 0;
             // otherwise if some partition already has some data accumulated but not ready yet,
+            // 否则，如果某个分区已经积累了一些数据，但还没有准备好
             // the select time will be the time difference between now and its linger expiry time;
             // otherwise the select time will be the time difference between now and the metadata expiry time;
             pollTimeout = 0;
@@ -735,6 +755,7 @@ public class Sender implements Runnable {
 
     /**
      * Transfer the record batches into a list of produce requests on a per-node basis
+     * 基于每个节点，将record batches转换到生产request的列表中
      */
     private void sendProduceRequests(Map<Integer, List<ProducerBatch>> collated, long now) {
         for (Map.Entry<Integer, List<ProducerBatch>> entry : collated.entrySet())
@@ -751,8 +772,9 @@ public class Sender implements Runnable {
         Map<TopicPartition, MemoryRecords> produceRecordsByPartition = new HashMap<>(batches.size());
         final Map<TopicPartition, ProducerBatch> recordsByPartition = new HashMap<>(batches.size());
 
+        // 需要寻找出最小的版本的消息格式
         // find the minimum magic version used when creating the record sets
-        byte minUsedMagic = apiVersions.maxUsableProduceMagic();
+        byte minUsedMagic = apiVersions.maxUsableProduceMagic(); // 服务端最高支持的消息格式
         for (ProducerBatch batch : batches) {
             if (batch.magic() < minUsedMagic)
                 minUsedMagic = batch.magic();
@@ -762,6 +784,11 @@ public class Sender implements Runnable {
             TopicPartition tp = batch.topicPartition;
             MemoryRecords records = batch.records();
 
+            // 注释: 这段话不是很好理解
+            // 如有必要，向下转换到能够发送的最小消息格式使用。
+            // 当基于过时的元数据选择消息格式 (因为Producer开始构建Batch和发送网络请求有延迟，获取的元数据是不一致的)
+            // 极端情况下，我们使用了新的消息格式但是broker不支持，所以需要我们发送前做一下降级
+            // 这个是因为在极端情况下，我们正好在升级集群，不同broker支持的消息格式是不一样的
             // down convert if necessary to the minimum magic used. In general, there can be a delay between the time
             // that the producer starts building the batch and the time that we send the request, and we may have
             // chosen the message format based on out-dated metadata. In the worst case, we optimistically chose to use
@@ -779,6 +806,7 @@ public class Sender implements Runnable {
         if (transactionManager != null && transactionManager.isTransactional()) {
             transactionalId = transactionManager.transactionalId();
         }
+        // 构建request,每个request仍然可能是多个batch
         ProduceRequest.Builder requestBuilder = ProduceRequest.Builder.forMagic(minUsedMagic, acks, timeout,
                 produceRecordsByPartition, transactionalId);
         RequestCompletionHandler callback = new RequestCompletionHandler() {
@@ -786,7 +814,7 @@ public class Sender implements Runnable {
                 handleProduceResponse(response, recordsByPartition, time.milliseconds());
             }
         };
-
+        // TODO: 2020/8/22 转换成String的意义？
         String nodeId = Integer.toString(destination);
         ClientRequest clientRequest = client.newClientRequest(nodeId, requestBuilder, now, acks != 0,
                 requestTimeoutMs, callback);
@@ -903,6 +931,7 @@ public class Sender implements Runnable {
             }
         }
 
+        // 指标调优的相关的Metric指标
         public void updateProduceRequestMetrics(Map<Integer, List<ProducerBatch>> batches) {
             long now = time.milliseconds();
             for (List<ProducerBatch> nodeBatch : batches.values()) {
@@ -929,7 +958,7 @@ public class Sender implements Runnable {
 
                     // global metrics
                     this.batchSizeSensor.record(batch.estimatedSizeInBytes(), now);
-                    this.queueTimeSensor.record(batch.queueTimeMs(), now);
+                    this.queueTimeSensor.record(batch.queueTimeMs(), now);  // drainedMs - createdMs; batch维度 排空的时间-batch创建的时间
                     this.compressionRateSensor.record(batch.compressionRatio());
                     this.maxRecordSizeSensor.record(batch.maxRecordSize, now);
                     records += batch.recordCount;

@@ -168,6 +168,7 @@ public final class RecordAccumulator {
 
     /**
      * Add a record to the accumulator, return the append result
+     * 向 accumulator 添加一条 record，并返回添加后的结果
      * <p>
      * The append result will contain the future metadata, and flag for whether the appended batch is full or a new batch is created
      * <p>
@@ -193,7 +194,7 @@ public final class RecordAccumulator {
         ByteBuffer buffer = null;
         if (headers == null) headers = Record.EMPTY_HEADERS;
         try {
-            // check if we have an in-progress batch
+            // check if we have an in-progress batch 确保有一个在用的batch
             Deque<ProducerBatch> dq = getOrCreateDeque(tp);
             synchronized (dq) {
                 if (closed)
@@ -212,22 +213,24 @@ public final class RecordAccumulator {
                 // Need to check if producer is closed again after grabbing the dequeue lock.
                 if (closed)
                     throw new KafkaException("Producer closed while send in progress");
-
+                // 先尝试加到dp已有RecordBatch里面
                 RecordAppendResult appendResult = tryAppend(timestamp, key, value, headers, callback, dq);
                 if (appendResult != null) {
                     // Somebody else found us a batch, return the one we waited for! Hopefully this doesn't happen often...
                     return appendResult;
                 }
-
+                // 失败了再自己构造ProducerBatch
                 MemoryRecordsBuilder recordsBuilder = recordsBuilder(buffer, maxUsableMagic);
                 ProducerBatch batch = new ProducerBatch(tp, recordsBuilder, time.milliseconds());
                 FutureRecordMetadata future = Utils.notNull(batch.tryAppend(timestamp, key, value, headers, callback, time.milliseconds()));
 
                 dq.addLast(batch);
+                //  incomplete 是 一个 thread-safe helper class to hold batches that haven't been acknowledged yet (including those
                 incomplete.add(batch);
 
                 // Don't deallocate this buffer in the finally block as it's being used in the record batch
                 buffer = null;
+                // 如何判断batch是否full呢？ 双端队列的size大于1 或者 batch满了
                 return new RecordAppendResult(future, dq.size() > 1 || batch.isFull(), true);
             }
         } finally {
@@ -255,8 +258,10 @@ public final class RecordAccumulator {
      */
     private RecordAppendResult tryAppend(long timestamp, byte[] key, byte[] value, Header[] headers,
                                          Callback callback, Deque<ProducerBatch> deque) {
+        // 取最新的ProducerBatch
         ProducerBatch last = deque.peekLast();
         if (last != null) {
+
             FutureRecordMetadata future = last.tryAppend(timestamp, key, value, headers, callback, time.milliseconds());
             if (future == null)
                 last.closeForRecordAppends();
@@ -591,6 +596,8 @@ public final class RecordAccumulator {
     }
 
     /**
+     * 排空给定节点的所有数据，并将它们整理成符合指定节点的批处理列表
+     * 每个节点的大小。这种方法试图避免反复选择同一个主题节点。
      * Drain all the data for the given nodes and collate them into a list of batches that will fit within the specified
      * size on a per-node basis. This method attempts to avoid choosing the same topic-node over and over.
      *

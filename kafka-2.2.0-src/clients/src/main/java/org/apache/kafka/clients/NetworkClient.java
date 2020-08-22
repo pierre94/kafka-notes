@@ -443,6 +443,7 @@ public class NetworkClient implements KafkaClient {
         ensureActive();
         String nodeId = clientRequest.destination();
         if (!isInternalRequest) {
+            // TODO: 2020/8/22 什么场景会有不是 Internal 的请求？
             // If this request came from outside the NetworkClient, validate
             // that we can send data.  If the request is internal, we trust
             // that internal code has done this validation.  Validation
@@ -472,13 +473,14 @@ public class NetworkClient implements KafkaClient {
             // fields that cannot be represented in the chosen version.
             doSend(clientRequest, isInternalRequest, now, builder.build(version));
         } catch (UnsupportedVersionException unsupportedVersionException) {
-            // If the version is not supported, skip sending the request over the wire.
-            // Instead, simply add it to the local queue of aborted requests.
+            // If the version is not supported, skip sending the request over the wire.如果不支持该版本，请跳过通过线路发送请求
+            // Instead, simply add it to the local queue of aborted requests. 相反，只需将其添加到中止请求的本地队列中。
             log.debug("Version mismatch when attempting to send {} with correlation id {} to {}", builder,
                     clientRequest.correlationId(), clientRequest.destination(), unsupportedVersionException);
             ClientResponse clientResponse = new ClientResponse(clientRequest.makeHeader(builder.latestAllowedVersion()),
                     clientRequest.callback(), clientRequest.destination(), now, now,
                     false, unsupportedVersionException, null, null);
+            // TODO: 2020/8/22  abortedSends之后会做什么呢？
             abortedSends.add(clientResponse);
         }
     }
@@ -504,7 +506,9 @@ public class NetworkClient implements KafkaClient {
                 request,
                 send,
                 now);
+        // the set of requests currently being sent or awaiting a response
         this.inFlightRequests.add(inFlightRequest);
+        // 使用网络客户端的selector发送数据
         selector.send(send);
     }
 
