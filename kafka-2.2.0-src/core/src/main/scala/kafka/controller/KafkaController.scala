@@ -1260,15 +1260,18 @@ class KafkaController(val config: KafkaConfig, zkClient: KafkaZkClient, time: Ti
     }
 
     try {
-      val (epoch, epochZkVersion) = zkClient.registerControllerAndIncrementControllerEpoch(config.brokerId)
-      controllerContext.epoch = epoch
-      controllerContext.epochZkVersion = epochZkVersion
-      activeControllerId = config.brokerId
+      if(config.isControllerCandidate){
+        val (epoch, epochZkVersion) = zkClient.registerControllerAndIncrementControllerEpoch(config.brokerId)
+        controllerContext.epoch = epoch
+        controllerContext.epochZkVersion = epochZkVersion
+        activeControllerId = config.brokerId
 
-      info(s"${config.brokerId} successfully elected as the controller. Epoch incremented to ${controllerContext.epoch} " +
-        s"and epoch zk version is now ${controllerContext.epochZkVersion}")
+        info(s"${config.brokerId} successfully elected as the controller. Epoch incremented to ${controllerContext.epoch} " +
+          s"and epoch zk version is now ${controllerContext.epochZkVersion}")
 
-      onControllerFailover()
+        onControllerFailover()
+      }
+      info(s"${config.brokerId} is not controller candidate. Give up elect")
     } catch {
       case e: ControllerMovedException =>
         maybeResign()

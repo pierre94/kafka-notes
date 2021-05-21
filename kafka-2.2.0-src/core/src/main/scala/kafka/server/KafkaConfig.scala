@@ -52,6 +52,7 @@ object Defaults {
   val BrokerIdGenerationEnable = true
   val MaxReservedBrokerId = 1000
   val BrokerId = -1
+  val IsControllerCandidate = true;
   val MessageMaxBytes = 1000000 + Records.LOG_OVERHEAD
   val NumNetworkThreads = 3
   val NumIoThreads = 8
@@ -269,6 +270,8 @@ object KafkaConfig {
   val BrokerIdGenerationEnableProp = "broker.id.generation.enable"
   val MaxReservedBrokerIdProp = "reserved.broker.max.id"
   val BrokerIdProp = "broker.id"
+  // 判断broker是否是controller的候选节点
+  val IsControllerCandidate = "broker.controller.candidate"
   val MessageMaxBytesProp = "message.max.bytes"
   val NumNetworkThreadsProp = "num.network.threads"
   val NumIoThreadsProp = "num.io.threads"
@@ -500,6 +503,7 @@ object KafkaConfig {
   val BrokerIdDoc = "The broker id for this server. If unset, a unique broker id will be generated." +
   "To avoid conflicts between zookeeper generated broker id's and user configured broker id's, generated broker ids " +
   "start from " + MaxReservedBrokerIdProp + " + 1."
+  val IsControllerCandidateDoc = "The broker is controller candidate."
   val MessageMaxBytesDoc = TopicConfig.MAX_MESSAGE_BYTES_DOC +
     s"<p>This can be set per topic with the topic level <code>${TopicConfig.MAX_MESSAGE_BYTES_CONFIG}</code> config.</p>"
   val NumNetworkThreadsDoc = "The number of threads that the server uses for receiving requests from the network and sending responses to the network"
@@ -846,6 +850,7 @@ object KafkaConfig {
       .define(BrokerIdGenerationEnableProp, BOOLEAN, Defaults.BrokerIdGenerationEnable, MEDIUM, BrokerIdGenerationEnableDoc)
       .define(MaxReservedBrokerIdProp, INT, Defaults.MaxReservedBrokerId, atLeast(0), MEDIUM, MaxReservedBrokerIdDoc)
       .define(BrokerIdProp, INT, Defaults.BrokerId, HIGH, BrokerIdDoc)
+      .define(IsControllerCandidate, BOOLEAN, Defaults.IsControllerCandidate, HIGH, IsControllerCandidateDoc)
       .define(MessageMaxBytesProp, INT, Defaults.MessageMaxBytes, atLeast(0), HIGH, MessageMaxBytesDoc)
       .define(NumNetworkThreadsProp, INT, Defaults.NumNetworkThreads, atLeast(1), HIGH, NumNetworkThreadsDoc)
       .define(NumIoThreadsProp, INT, Defaults.NumIoThreads, atLeast(1), HIGH, NumIoThreadsDoc)
@@ -1134,6 +1139,8 @@ class KafkaConfig(val props: java.util.Map[_, _], doLog: Boolean, dynamicConfigO
   val brokerIdGenerationEnable: Boolean = getBoolean(KafkaConfig.BrokerIdGenerationEnableProp)
   val maxReservedBrokerId: Int = getInt(KafkaConfig.MaxReservedBrokerIdProp)
   var brokerId: Int = getInt(KafkaConfig.BrokerIdProp)
+  // 指定节点可以成为controller
+  val isControllerCandidate: Boolean = getBoolean(KafkaConfig.IsControllerCandidate)
 
   def numNetworkThreads = getInt(KafkaConfig.NumNetworkThreadsProp)
   def backgroundThreads = getInt(KafkaConfig.BackgroundThreadsProp)
