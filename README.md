@@ -79,3 +79,7 @@ Kafka 的事务可以看作Kafka 中最难的知识点之一!目前先写一下�
 
 ## 参考资料
 - 《深入理解kafka:核心设计与实现》
+
+## 微信公众号
+更多文章与内容请关注:
+![](https://bear2-10045049.cos.ap-shanghai.myqcloud.com/mzmq5nkwlf.png)
